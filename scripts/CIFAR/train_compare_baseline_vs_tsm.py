@@ -5,7 +5,7 @@ from torchvision import datasets, transforms
 
 from scripts.CIFAR.cifar_sequence_dataset import CIFARSequenceDataset
 from models.baseline_seq_cnn import BaselineSeqCNN
-from models.tsm_cnn import TSM_CNN
+from models.tsm_cnn_old import TSM_CNN
 
 def train_one(model, loader, device, epochs=2, lr=1e-3):
     model = model.to(device)

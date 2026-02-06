@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from scripts.dogs_vs_cats.video_dataset import VideoFrameDataset
-from models.tsm_cnn import TSM_CNN
+from models.tsm_cnn_old import TSM_CNN
 
 
 def run_one_epoch(model, loader, optimizer, criterion, device, train: bool):
