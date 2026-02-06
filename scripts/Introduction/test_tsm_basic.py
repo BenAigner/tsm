@@ -1,5 +1,5 @@
 import torch
-from models.tsm import TemporalShift
+from models.Introduction.tsm import TemporalShift
 
 def main():
     # Kleine, übersichtliche Größen

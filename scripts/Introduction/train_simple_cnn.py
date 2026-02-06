@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from models.simple_cnn import SimpleCNN
+from models.Introduction.simple_cnn import SimpleCNN
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 

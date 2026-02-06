@@ -1,5 +1,5 @@
 import torch
-from models.tsm_cnn_old import TSM_CNN
+from models.Introduction.tsm_cnn_old import TSM_CNN
 
 def main():
 

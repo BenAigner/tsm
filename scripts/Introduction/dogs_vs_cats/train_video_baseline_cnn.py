@@ -3,8 +3,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from scripts.dogs_vs_cats.video_dataset import VideoFrameDataset
-from models.baseline_seq_cnn import BaselineSeqCNN
+from scripts.Introduction.dogs_vs_cats.video_dataset import VideoFrameDataset
+from models.Introduction.baseline_seq_cnn import BaselineSeqCNN
 
 
 def run_one_epoch(model, loader, optimizer, criterion, device, train: bool):

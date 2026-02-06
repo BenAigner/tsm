@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models.tsm import TemporalShift
+from models.Introduction.tsm import TemporalShift
 
 
 class TSM_CNN(nn.Module):

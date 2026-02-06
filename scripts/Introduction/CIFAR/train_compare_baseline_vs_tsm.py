@@ -3,9 +3,9 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
-from scripts.CIFAR.cifar_sequence_dataset import CIFARSequenceDataset
-from models.baseline_seq_cnn import BaselineSeqCNN
-from models.tsm_cnn_old import TSM_CNN
+from scripts.Introduction.CIFAR.cifar_sequence_dataset import CIFARSequenceDataset
+from models.Introduction.baseline_seq_cnn import BaselineSeqCNN
+from models.Introduction.tsm_cnn_old import TSM_CNN
 
 def train_one(model, loader, device, epochs=2, lr=1e-3):
     model = model.to(device)
