@@ -14,3 +14,13 @@ results/
 # OS
 .DS_Store
 Thumbs.db
+
+# Ignore checkpoints
+*.pt
+
+# Runs: ignore everything by default
+runs/*
+
+# Allow only these artifacts from runs
+!runs/**/*.json
+!runs/**/*.png

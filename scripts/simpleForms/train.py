@@ -3,6 +3,11 @@ import argparse
 import time
 from dataclasses import dataclass
 
+import json
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -73,6 +78,23 @@ def evaluate(model: nn.Module,
         acc_shape=correct_s / max(total, 1),
         acc_exact=correct_exact / max(total, 1),
     )
+
+@torch.no_grad()
+def collect_rotation_preds(model: nn.Module, loader: DataLoader, device: torch.device):
+    model.eval()
+    y_true, y_pred = [], []
+    for clips, motion, rot, shape in loader:
+        clips = clips.to(device)
+        rot = rot.to(device)
+
+        logits_m, logits_r, logits_s = model(clips)
+        pred_r = logits_r.argmax(dim=1)
+
+        y_true.extend(rot.cpu().numpy().tolist())
+        y_pred.extend(pred_r.cpu().numpy().tolist())
+    return y_true, y_pred
+
+
 
 
 def train_one_epoch(model: nn.Module,
@@ -237,6 +259,56 @@ def main():
         f"\nTEST  loss {test_metrics.loss:.4f} | "
         f"motion {test_metrics.acc_motion:.3f} | rot {test_metrics.acc_rot:.3f} | shape {test_metrics.acc_shape} | exact {test_metrics.acc_exact:.3f}"
     )
+
+    # --- Test-Metriken als JSON speichern ---
+    results = {
+        "seed": int(args.seed),
+        "use_tsm": bool(args.use_tsm),
+        "n_segment": int(args.n_segment),
+        "fold_div": int(args.fold_div),
+        "epochs": int(args.epochs),
+        "batch_size": int(args.batch_size),
+        "lr": float(args.lr),
+        "weight_decay": float(args.weight_decay),
+        "test_loss": float(test_metrics.loss),
+        "test_acc_motion": float(test_metrics.acc_motion),
+        "test_acc_rot": float(test_metrics.acc_rot),
+        "test_acc_shape": float(test_metrics.acc_shape),
+        "test_acc_exact": float(test_metrics.acc_exact),
+    }
+    with open(os.path.join(out_dir, "test_metrics.json"), "w") as f:
+        json.dump(results, f, indent=2)
+
+    # --- Rotation Confusion Matrix berechnen ---
+    labels_rot = ["ccw", "cw", "none"]  # muss zu ROT_LABELS Reihenfolge passen
+    y_true, y_pred = collect_rotation_preds(model, dl_test, device)
+    cm = confusion_matrix(y_true, y_pred, labels=[0, 1, 2])
+
+    # NPY speichern (für späteres Laden)
+    np.save(os.path.join(out_dir, "confusion_rot.npy"), cm)
+
+    # CSV speichern (gut für BA / Excel)
+    cm_csv = os.path.join(out_dir, "confusion_rot.csv")
+    with open(cm_csv, "w") as f:
+        f.write("true\\pred," + ",".join(labels_rot) + "\n")
+        for i, name in enumerate(labels_rot):
+            f.write(name + "," + ",".join(str(int(x)) for x in cm[i]) + "\n")
+
+    # PNG speichern (direkt in BA einfügbar)
+    plt.figure(figsize=(4, 4))
+    plt.imshow(cm, cmap="Blues")
+    plt.xticks(range(3), labels_rot)
+    plt.yticks(range(3), labels_rot)
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    for i in range(3):
+        for j in range(3):
+            plt.text(j, i, str(int(cm[i, j])), ha="center", va="center")
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, "confusion_rot.png"), dpi=200)
+    plt.close()
+
+    print(f"Saved test_metrics.json + confusion_rot.(npy/csv/png) to {out_dir}")
 
 
 if __name__ == "__main__":
