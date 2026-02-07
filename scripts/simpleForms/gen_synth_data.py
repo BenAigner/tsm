@@ -13,6 +13,9 @@ from tqdm import tqdm
 FIXED_SPEED = 4.0  # px/frame für Bewegung
 FIXED_OMEGA = 6.0  # Grad/frame für Rotation
 
+# Variable Trans- und Rotationsgeschwindigkeit
+SPEED_LEVELS = [2.0, 4.0, 6.0, 8.0, 10.0]  # px/frame
+
 # ----------------------------
 # Labeldefinitionen
 # ----------------------------
@@ -47,6 +50,7 @@ class ClipParams:
     thickness: int      # -1 = gefüllt
 
     # Bewegung
+    speed: float          
     x0: int
     y0: int
     vx: float           # px/frame
@@ -199,6 +203,7 @@ def sample_params(H: int,
         H=H, W=W, T=T,
         radius=radius,
         thickness=thickness,
+        speed=0.0,  # wird später durch set_motion überschrieben
         x0=0, y0=0,
         vx=0.0, vy=0.0,
         angle0=angle0,
@@ -219,8 +224,10 @@ def set_motion(p: ClipParams, motion_name: str, rng: np.random.Generator) -> Non
     if motion_name == "none":
         vx, vy = 0.0, 0.0
         dx, dy = 0.0, 0.0
+        p.speed = 0.0
     else:
-        speed = FIXED_SPEED  # px/frame
+        speed = float(rng.choice(SPEED_LEVELS))  # zufällige Geschwindigkeit aus den definierten Levels
+        p.speed = speed
         vx, vy = 0.0, 0.0
         if motion_name == "left":
             vx = -speed
@@ -354,7 +361,8 @@ def main():
                 frames=frames,            # [T,H,W,3] uint8
                 motion=np.int64(p.motion_id),
                 rot=np.int64(p.rot_id),
-                shape=SHAPE_TO_ID[p.shape],
+                shape=np.int64(p.shape_id),
+                speed=np.float32(p.speed),
             )
 
             row = asdict(p)

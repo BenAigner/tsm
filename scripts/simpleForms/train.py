@@ -297,8 +297,8 @@ def main():
 
         print(
             f"Epoch {epoch:03d}/{args.epochs:03d} | {dt:6.1f}s  "
-            f"train: loss {train_metrics.loss:.4f} | m {train_metrics.acc_motion:.3f} | r {train_metrics.acc_rot:.3f} | s {train_metrics.acc_shape} | exact {train_metrics.acc_exact:.3f}  "
-            f"val: loss {val_metrics.loss:.4f} | m {val_metrics.acc_motion:.3f} | r {val_metrics.acc_rot:.3f} | s {val_metrics.acc_shape}| exact {val_metrics.acc_exact:.3f}"
+            f"train: loss {train_metrics.loss:.4f} | m {train_metrics.acc_motion:.3f} | r {train_metrics.acc_rot:.3f} | s {train_metrics.acc_shape:.3f} | exact {train_metrics.acc_exact:.3f}  "
+            f"val: loss {val_metrics.loss:.4f} | m {val_metrics.acc_motion:.3f} | r {val_metrics.acc_rot:.3f} | s {val_metrics.acc_shape:.3f}| exact {val_metrics.acc_exact:.3f}"
         )
 
         # Bestes Modell nach Val-Exact-Match speichern

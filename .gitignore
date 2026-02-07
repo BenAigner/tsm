@@ -19,8 +19,16 @@ Thumbs.db
 *.pt
 
 # Runs: ignore everything by default
-runs/*
+runs/**
+
+# Unignore directory structure so allowed files can be re-included
+!runs/
+!runs/**/
+!runs/with_TSM/
+!runs/without_TSM/
 
 # Allow only these artifacts from runs
 !runs/**/*.json
 !runs/**/*.png
+!runs/**/*.csv
+
