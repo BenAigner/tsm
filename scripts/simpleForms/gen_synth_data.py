@@ -15,6 +15,8 @@ FIXED_OMEGA = 6.0  # Grad/frame für Rotation
 
 # Variable Trans- und Rotationsgeschwindigkeit
 SPEED_LEVELS = [2.0, 4.0, 6.0, 8.0, 10.0]  # px/frame
+OMEGA_LEVELS = [2.0, 4.0, 6.0, 8.0, 10.0]  # deg/frame
+
 
 # ----------------------------
 # Labeldefinitionen
@@ -59,6 +61,7 @@ class ClipParams:
     # Rotation
     angle0: float       # Grad
     omega_deg_per_frame: float
+    omega_mag: float       # Betrag der Winkelgeschwindigkeit (für spätere Analyse)
 
     # leichte Störungen
     noise_std: float
@@ -208,6 +211,7 @@ def sample_params(H: int,
         vx=0.0, vy=0.0,
         angle0=angle0,
         omega_deg_per_frame=0.0,
+        omega_mag=0.0,
         noise_std=noise_std,
         blur_ksize=blur_ksize,
         bg_level=bg_level,
@@ -226,7 +230,8 @@ def set_motion(p: ClipParams, motion_name: str, rng: np.random.Generator) -> Non
         dx, dy = 0.0, 0.0
         p.speed = 0.0
     else:
-        speed = float(rng.choice(SPEED_LEVELS))  # zufällige Geschwindigkeit aus den definierten Levels
+        # speed = float(rng.choice(SPEED_LEVELS))  # zufällige Geschwindigkeit aus den definierten Levels
+        speed = FIXED_SPEED  # feste Geschwindigkeit für klar erkennbare Bewegung
         p.speed = speed
         vx, vy = 0.0, 0.0
         if motion_name == "left":
@@ -278,11 +283,17 @@ def set_rotation(p: ClipParams, rot_name: str, rng: np.random.Generator) -> None
 
     if rot_name == "none":
         p.omega_deg_per_frame = 0.0
+        p.omega_mag = 0.0
     else:
         # Magnitude bewusst klein bis moderat halten, damit pro Clip eine erkennbare Änderung entsteht
-        mag = FIXED_OMEGA  # deg/frame
+
+        # mag = FIXED_OMEGA  # deg/frame
+        mag = float(rng.choice(OMEGA_LEVELS))  # zufällige Magnitude aus den definierten Levels
+
+        p.omega_mag = mag
         p.omega_deg_per_frame = mag if rot_name == "ccw" else -mag
 
+        
 
 def save_preview_mp4(frames: np.ndarray, out_path: str, fps: int = 12) -> None:
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -363,6 +374,7 @@ def main():
                 rot=np.int64(p.rot_id),
                 shape=np.int64(p.shape_id),
                 speed=np.float32(p.speed),
+                omega_mag=np.float32(p.omega_mag),
             )
 
             row = asdict(p)

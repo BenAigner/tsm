@@ -6,7 +6,15 @@ __pycache__/
 venv/
 
 # Data
-data/
+data/*
+
+# Unignore specific config files
+!data/Configs_SimpleForms/
+!data/Configs_SimpleForms/**
+
+# Still Ignore specific generated datasets
+data/simpleForms*
+data/simpleForms_*
 
 # Results
 results/

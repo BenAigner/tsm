@@ -1,0 +1,11 @@
+{
+  "experiment": "fixed_motion_variable_rotation",
+  "description": "Translation speed fixed at 4 px/frame, rotation variable from [2,4,6,8,10] deg/frame",
+  "seed": 123,
+  "rotation": "variable (2-10 deg/frame)",
+  "translation": "fixed (4 px/frame)",
+  "clip_length": 16,
+  "image_size": "112x112",
+
+  "command": "python -m scripts.simpleForms.gen_synth_data --out data/simpleForms_fmotion_vrotation_s789 --seed 789 --train 3000 --val 600 --test 600 --H 112 --W 112 --T 16 --shapes rect,tri"
+}
