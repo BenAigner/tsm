@@ -69,10 +69,10 @@ def evaluate(model: nn.Module,
 
     for clips, motion, rot, shape in loader:
         # clips: [B, T, C, H, W]
-        clips = clips.to(device)
-        motion = motion.to(device)  # [B]
-        rot = rot.to(device)        # [B]
-        shape = shape.to(device)    # [B]
+        clips = clips.to(device, non_blocking=True)
+        motion = motion.to(device, non_blocking=True)  # [B]
+        rot = rot.to(device, non_blocking=True)        # [B]
+        shape = shape.to(device, non_blocking=True)    # [B]
 
         # Vorwärtslauf: drei Logit-Ausgaben
         logits_m, logits_r, logits_s = model(clips)
@@ -156,10 +156,15 @@ def train_one_epoch(model: nn.Module,
     total = 0
 
     for clips, motion, rot, shape in loader:
-        clips = clips.to(device)
-        motion = motion.to(device)
-        rot = rot.to(device)
-        shape = shape.to(device)
+
+        clips = clips.to(device, non_blocking=True)
+        motion = motion.to(device,  non_blocking=True)
+        rot = rot.to(device,  non_blocking=True)
+        shape = shape.to(device,  non_blocking=True)
+
+        # test
+        #print("CLIPS DEVICE:", clips.device)
+        #break
 
         # Gradienten löschen (set_to_none=True kann etwas effizienter sein)
         optimizer.zero_grad(set_to_none=True)
@@ -248,11 +253,14 @@ def main():
     ds_test = SynthMultiLabelNPZ(args.data, "test")
 
     dl_train = DataLoader(ds_train, batch_size=args.batch_size, shuffle=True,
-                          num_workers=args.num_workers, pin_memory=(device.type == "cuda"))
+                            num_workers=args.num_workers, pin_memory=(device.type == "cuda"), persistent_workers=(args.num_workers > 0),
+                            prefetch_factor=2 if args.num_workers > 0 else None)
     dl_val = DataLoader(ds_val, batch_size=args.batch_size, shuffle=False,
-                        num_workers=args.num_workers, pin_memory=(device.type == "cuda"))
+                            num_workers=args.num_workers, pin_memory=(device.type == "cuda"), persistent_workers=(args.num_workers > 0),
+                            prefetch_factor=2 if args.num_workers > 0 else None)
     dl_test = DataLoader(ds_test, batch_size=args.batch_size, shuffle=False,
-                         num_workers=args.num_workers, pin_memory=(device.type == "cuda"))
+                            num_workers=args.num_workers, pin_memory=(device.type == "cuda"), persistent_workers=(args.num_workers > 0),
+                            prefetch_factor=2 if args.num_workers > 0 else None)
 
     # Modell initialisieren (drei Köpfe: motion, rotation, shape)
     model = TSM_CNN(
@@ -264,6 +272,10 @@ def main():
         use_tsm=args.use_tsm
     ).to(device)
 
+    # Test
+    #print("MODEL DEVICE:", next(model.parameters()).device)
+
+
     # Loss-Funktionen pro Task
     ce_motion = nn.CrossEntropyLoss()
     ce_rot = nn.CrossEntropyLoss()
@@ -273,7 +285,7 @@ def main():
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     # Output-Ordner pro Run (Zeitstempel)
-    run_name = time.strftime("%Y%m%d-%H%M%S")
+    run_name = time.strftime("%Y%m%d-%H%M%S") + f"_s{args.seed}" + ("_tsm" if args.use_tsm else "_noTSM")
     out_dir = os.path.join(args.save_dir, run_name)
     os.makedirs(out_dir, exist_ok=True)
 

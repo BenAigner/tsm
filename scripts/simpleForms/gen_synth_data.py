@@ -233,6 +233,7 @@ def set_motion(p: ClipParams, motion_name: str, rng: np.random.Generator) -> Non
         # speed = float(rng.choice(SPEED_LEVELS))  # zufällige Geschwindigkeit aus den definierten Levels
         speed = FIXED_SPEED  # feste Geschwindigkeit für klar erkennbare Bewegung
         p.speed = speed
+
         vx, vy = 0.0, 0.0
         if motion_name == "left":
             vx = -speed
@@ -287,8 +288,8 @@ def set_rotation(p: ClipParams, rot_name: str, rng: np.random.Generator) -> None
     else:
         # Magnitude bewusst klein bis moderat halten, damit pro Clip eine erkennbare Änderung entsteht
 
-        # mag = FIXED_OMEGA  # deg/frame
-        mag = float(rng.choice(OMEGA_LEVELS))  # zufällige Magnitude aus den definierten Levels
+        mag = FIXED_OMEGA  # deg/frame
+        # mag = float(rng.choice(OMEGA_LEVELS))  # zufällige Magnitude aus den definierten Levels
 
         p.omega_mag = mag
         p.omega_deg_per_frame = mag if rot_name == "ccw" else -mag

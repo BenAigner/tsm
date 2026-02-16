@@ -23,7 +23,7 @@ class SynthMultiLabelNPZ(Dataset):
 
     def __getitem__(self, idx):
         path = os.path.join(self.clip_dir, self.files[idx])
-        data = np.load(path)
+        data = np.load(path, mmap_mode="r")
         frames = data["frames"]           # uint8 [T,H,W,3]
         motion = int(data["motion"])      # int64 scalar
         rot = int(data["rot"])            # int64 scalar

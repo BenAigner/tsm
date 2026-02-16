@@ -1,0 +1,15 @@
+{
+  "seed": 789,
+  "use_tsm": true,
+  "n_segment": 16,
+  "fold_div": 8,
+  "epochs": 30,
+  "batch_size": 16,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "test_loss": 0.6520466466744741,
+  "test_acc_motion": 1.0,
+  "test_acc_rot": 0.6666666666666666,
+  "test_acc_shape": 1.0,
+  "test_acc_exact": 0.6666666666666666
+}

@@ -1,5 +1,5 @@
 import torch
-from models.Introduction.tsm import TemporalShift
+from models.simpleForms.tsm import TemporalShift
 
 def main():
     # Kleine, übersichtliche Größen

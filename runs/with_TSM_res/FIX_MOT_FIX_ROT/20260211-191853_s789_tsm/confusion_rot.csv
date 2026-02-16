@@ -1,0 +1,4 @@
+true\pred,ccw,cw,none
+ccw,200,0,0
+cw,0,199,1
+none,1,1,198
