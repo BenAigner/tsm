@@ -1,0 +1,5 @@
+case,test_loss_mean_noTSM,test_loss_mean_TSM,test_loss_gain,test_acc_motion_mean_noTSM,test_acc_motion_mean_TSM,test_acc_motion_gain,test_acc_rot_mean_noTSM,test_acc_rot_mean_TSM,test_acc_rot_gain,test_acc_shape_mean_noTSM,test_acc_shape_mean_TSM,test_acc_shape_gain,test_acc_exact_mean_noTSM,test_acc_exact_mean_TSM,test_acc_exact_gain
+FIX_MOT_FIX_ROT,1.3578,0.0217,-1.3361,0.913,1.0,0.087,0.799,0.995,0.196,0.999,1.0,0.001,0.753,0.995,0.242
+FIX_MOT_VAR_ROT,1.7668,0.0535,-1.7133,0.902,1.0,0.098,0.529,0.983,0.454,1.0,1.0,0.0,0.486,0.983,0.497
+VAR_MOT_FIX_ROT,1.5052,0.1726,-1.3326,0.818,1.0,0.182,0.349,0.944,0.596,1.0,1.0,0.0,0.28,0.944,0.664
+VAR_MOT_VAR_ROT,2.0045,0.4685,-1.536,0.805,1.0,0.195,0.442,0.879,0.437,0.996,1.0,0.004,0.348,0.879,0.531

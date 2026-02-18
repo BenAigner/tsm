@@ -33,7 +33,6 @@ def infer_seed(dataset_name: str) -> Optional[int]:
 
 
 def run_one(
-    train_py: Path,
     dataset_path: Path,
     save_dir: Path,
     use_tsm: bool,
@@ -46,6 +45,9 @@ def run_one(
     n_segment: int,
     fold_div: int,
     seed: int,
+    early_stop: bool,
+    patience: int,
+    min_delta: float,
     dry_run: bool,
 ) -> None:
     """
@@ -66,8 +68,13 @@ def run_one(
         "--seed", str(seed),
         "--save_dir", str(save_dir),
     ]
+
     if use_tsm:
         cmd.append("--use_tsm")
+
+    if early_stop:
+        cmd += ["--early_stop", "--patience", str(patience), "--min_delta", str(min_delta)]
+
 
     print("\n" + "=" * 80)
     print(("WITH  TSM" if use_tsm else "WITHOUT TSM") + f" | dataset={dataset_path.name} | seed={seed}")
@@ -78,7 +85,6 @@ def run_one(
     if dry_run:
         return
 
-    # Wichtig: stdout live durchreichen, damit du Progress siehst
     subprocess.run(cmd, check=True)
 
 
@@ -86,20 +92,23 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data_root", type=str, default="data/simpleForms",
                     help="Ordner mit den Datensätzen (Unterordner pro dataset)")
-    ap.add_argument("--train_py", type=str, default="scripts/simpleForms/train.py",
-                    help="Pfad zu deinem Trainingsscript")
     ap.add_argument("--runs_root", type=str, default="runs",
                     help="Oberordner für runs/*")
 
-    # Training-Parameter (defaults wie dein train.py)
+    # Training-Parameter
     ap.add_argument("--device", type=str, default="cuda")
-    ap.add_argument("--epochs", type=int, default=30)
+    ap.add_argument("--epochs", type=int, default=100)
     ap.add_argument("--batch_size", type=int, default=16)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--weight_decay", type=float, default=1e-4)
     ap.add_argument("--num_workers", type=int, default=2)
     ap.add_argument("--n_segment", type=int, default=16)
     ap.add_argument("--fold_div", type=int, default=8)
+
+    # Optional: Early Stopping
+    ap.add_argument("--early_stop", action="store_true", help="Early stopping aktivieren")
+    ap.add_argument("--patience", type=int, default=15)
+    ap.add_argument("--min_delta", type=float, default=0.001)
 
     # Verhalten
     ap.add_argument("--dry_run", action="store_true",
@@ -112,23 +121,17 @@ def main():
     args = ap.parse_args()
 
     data_root = Path(args.data_root)
-    train_py = Path(args.train_py)
     runs_root = Path(args.runs_root)
 
-    if not train_py.exists():
-        raise FileNotFoundError(f"train.py nicht gefunden: {train_py}")
     if not data_root.exists():
         raise FileNotFoundError(f"data_root nicht gefunden: {data_root}")
 
-    # Zielordner
     with_root = runs_root / "with_TSM_res"
     without_root = runs_root / "without_TSM_res"
     with_root.mkdir(parents=True, exist_ok=True)
     without_root.mkdir(parents=True, exist_ok=True)
 
-    # Datensätze finden
     datasets = sorted([p for p in data_root.iterdir() if p.is_dir()])
-
     if not datasets:
         print("Keine Dataset-Unterordner gefunden in:", data_root)
         return
@@ -136,36 +139,26 @@ def main():
     for ds in datasets:
         case = infer_case(ds.name)
         if case is None:
-            # Nicht relevant (oder anders benannt)
             continue
 
         if args.only_case and case != args.only_case:
             continue
 
-        seed = infer_seed(ds.name)
-        if seed is None:
-            # Wenn kein _sXYZ im Namen steht: trotzdem laufen lassen,
-            # aber seed dann z.B. 123 setzen (oder du zwingst Naming)
-            seed = 123
+        seed = infer_seed(ds.name) or 123
 
-        # Ziel-Unterordner pro Case
         save_dir_with = with_root / case
         save_dir_without = without_root / case
         save_dir_with.mkdir(parents=True, exist_ok=True)
         save_dir_without.mkdir(parents=True, exist_ok=True)
 
-        # Optional: grobes Skip-Kriterium, wenn bereits Runs vorhanden sind
         if args.skip_existing:
-            # Wenn im Ordner mindestens 1 Run-Subdir liegt, skippen wir
             has_with = any(p.is_dir() for p in save_dir_with.iterdir())
             has_without = any(p.is_dir() for p in save_dir_without.iterdir())
             if has_with and has_without:
                 print(f"SKIP (existing): {ds.name} -> {case}")
                 continue
 
-        # Run ohne TSM
         run_one(
-            train_py=train_py,
             dataset_path=ds,
             save_dir=save_dir_without,
             use_tsm=False,
@@ -178,12 +171,13 @@ def main():
             n_segment=args.n_segment,
             fold_div=args.fold_div,
             seed=seed,
+            early_stop=args.early_stop,
+            patience=args.patience,
+            min_delta=args.min_delta,
             dry_run=args.dry_run
         )
 
-        # Run mit TSM
         run_one(
-            train_py=train_py,
             dataset_path=ds,
             save_dir=save_dir_with,
             use_tsm=True,
@@ -196,6 +190,9 @@ def main():
             n_segment=args.n_segment,
             fold_div=args.fold_div,
             seed=seed,
+            early_stop=args.early_stop,
+            patience=args.patience,
+            min_delta=args.min_delta,
             dry_run=args.dry_run
         )
 

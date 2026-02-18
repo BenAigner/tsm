@@ -26,6 +26,9 @@ Thumbs.db
 # Ignore checkpoints
 *.pt
 
+# Ignore Identifier files created by Windows when downloading files from the internet
+*Zone.Identifier*
+
 # Runs: ignore everything by default
 runs/**
 

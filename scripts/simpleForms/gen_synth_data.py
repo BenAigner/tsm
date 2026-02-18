@@ -1,6 +1,8 @@
 import os
 import math
+import json
 import argparse
+import shutil
 from dataclasses import dataclass, asdict
 from typing import Tuple, Dict, Any, List
 
@@ -9,29 +11,26 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-# Konstanten für Trans- und Rotationsgeschwindigkeit
-FIXED_SPEED = 4.0  # px/frame für Bewegung
-FIXED_OMEGA = 6.0  # Grad/frame für Rotation
+# ------------------------------------------------------------
+# Default-Parameter (können per CLI überschrieben werden)
+# ------------------------------------------------------------
+DEFAULT_FIXED_SPEED = 4.0   # px/frame
+DEFAULT_FIXED_OMEGA = 6.0   # deg/frame
 
-# Variable Trans- und Rotationsgeschwindigkeit
-SPEED_LEVELS = [2.0, 4.0, 6.0, 8.0, 10.0]  # px/frame
-OMEGA_LEVELS = [2.0, 4.0, 6.0, 8.0, 10.0]  # deg/frame
-
+DEFAULT_SPEED_LEVELS = [2.0, 4.0, 6.0, 8.0, 10.0]  # px/frame
+DEFAULT_OMEGA_LEVELS = [2.0, 4.0, 6.0, 8.0, 10.0]  # deg/frame
 
 # ----------------------------
-# Labeldefinitionen
+# Labels
 # ----------------------------
-# Motion: fünf Klassen inkl. "keine Bewegung"
 MOTION_LABELS = ["none", "left", "right", "up", "down"]
 MOTION_TO_ID = {name: i for i, name in enumerate(MOTION_LABELS)}
 
-# Rotation: ccw, cw, none
 ROT_LABELS = ["ccw", "cw", "none"]
 ROT_TO_ID = {name: i for i, name in enumerate(ROT_LABELS)}
 
-# Form: Rechteck oder Dreieck
 SHAPE_LABELS = ["rect", "tri"]
-SHAPE_TO_ID ={name: i for i, name in enumerate(SHAPE_LABELS)} # rect = 0, tri = 1
+SHAPE_TO_ID = {name: i for i, name in enumerate(SHAPE_LABELS)}  # rect=0, tri=1
 
 
 @dataclass
@@ -44,46 +43,60 @@ class ClipParams:
     shape_id: int
 
     # Rendering
-    shape: str          # "rect" | "tri"
+    shape: str
     H: int
     W: int
     T: int
-    radius: int         # grobe Größe (für rect/tri als Maß)
-    thickness: int      # -1 = gefüllt
+    radius: int
+    thickness: int
 
     # Bewegung
-    speed: float          
+    speed: float
     x0: int
     y0: int
-    vx: float           # px/frame
-    vy: float           # px/frame
+    vx: float
+    vy: float
 
     # Rotation
-    angle0: float       # Grad
+    angle0: float
     omega_deg_per_frame: float
-    omega_mag: float       # Betrag der Winkelgeschwindigkeit (für spätere Analyse)
+    omega_mag: float  # Betrag der Winkelgeschwindigkeit (für Analyse)
 
-    # leichte Störungen
+    # leichte Störungen (Base-Setting)
     noise_std: float
     blur_ksize: int
     bg_level: int
 
 
-def draw_shape(canvas: np.ndarray,
-               shape: str,
-               center: Tuple[int, int],
-               radius: int,
-               angle_deg: float,
-               color: Tuple[int, int, int],
-               thickness: int) -> None:
+def parse_float_list(s: str) -> List[float]:
+    """Parse '2,4,6' -> [2.0,4.0,6.0]."""
+    out: List[float] = []
+    for part in s.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        out.append(float(part))
+    if not out:
+        raise ValueError("Liste ist leer. Bitte z.B. '2,4,6' angeben.")
+    return out
+
+
+def draw_shape(
+    canvas: np.ndarray,
+    shape: str,
+    center: Tuple[int, int],
+    radius: int,
+    angle_deg: float,
+    color: Tuple[int, int, int],
+    thickness: int
+) -> None:
     """
-    Zeichnet eine gefüllte Form (Rechteck oder Dreieck) auf den Canvas.
-    Rotation wird über rotierte Polygonpunkte realisiert.
+    Zeichnet eine Form (rect/tri) auf den Canvas.
+    Rotation erfolgt über rotierte Polygonpunkte.
     """
     cx, cy = center
 
     if shape == "rect":
-        # Rechteckpunkte im lokalen Koordinatensystem
         half_w = radius
         half_h = int(radius * 0.7)
         pts = np.array([
@@ -94,7 +107,7 @@ def draw_shape(canvas: np.ndarray,
         ], dtype=np.float32)
 
     elif shape == "tri":
-        # Dreieckpunkte im lokalen Koordinatensystem
+        # Einfaches, gut erkennbares Dreieck
         h = int(radius * 1.2)
         pts = np.array([
             [0, -h],
@@ -105,7 +118,6 @@ def draw_shape(canvas: np.ndarray,
     else:
         raise ValueError(f"Unknown shape: {shape}")
 
-    # Rotation der Punkte um den Ursprung, dann Translation zum Zentrum
     theta = math.radians(angle_deg)
     R = np.array([[math.cos(theta), -math.sin(theta)],
                   [math.sin(theta),  math.cos(theta)]], dtype=np.float32)
@@ -121,9 +133,7 @@ def draw_shape(canvas: np.ndarray,
 
 
 def render_clip(p: ClipParams, rng: np.random.Generator) -> np.ndarray:
-    """
-    Rendert einen Clip als uint8-Array der Form [T, H, W, 3].
-    """
+    """Rendert einen Clip als uint8-Array [T, H, W, 3]."""
     frames = np.empty((p.T, p.H, p.W, 3), dtype=np.uint8)
 
     x = float(p.x0)
@@ -133,22 +143,19 @@ def render_clip(p: ClipParams, rng: np.random.Generator) -> np.ndarray:
     color = (0, 0, 0)  # Formfarbe: schwarz
 
     for t in range(p.T):
-        # Hintergrund: leicht variierendes Weiß
         img = np.full((p.H, p.W, 3), p.bg_level, dtype=np.uint8)
 
-        # Form zeichnen
         cx = int(round(x))
         cy = int(round(y))
         draw_shape(img, p.shape, (cx, cy), p.radius, angle, color, p.thickness)
 
-        # additive Rauschkomponente (klein gehalten)
+        # Base-Störungen (klein halten)
         if p.noise_std > 0:
             f = img.astype(np.float32)
             noise = rng.normal(0.0, p.noise_std, size=f.shape).astype(np.float32)
             f = np.clip(f + noise, 0, 255)
             img = f.astype(np.uint8)
 
-        # optionaler leichter Blur
         if p.blur_ksize > 0:
             k = p.blur_ksize
             if k % 2 == 0:
@@ -165,48 +172,32 @@ def render_clip(p: ClipParams, rng: np.random.Generator) -> np.ndarray:
     return frames
 
 
-def sample_params(H: int,
-                  W: int,
-                  T: int,
-                  rng: np.random.Generator,
-                  shape: str) -> ClipParams:
-    """
-    Samplet zufällige Clip-Parameter.
-    Labels (Motion/Rotation) werden balanciert über einen äußeren Zyklus erzeugt.
-    """
-    # Platzhalter, Labels werden später gesetzt
+def sample_params(H: int, W: int, T: int, rng: np.random.Generator, shape: str) -> ClipParams:
+    """Samplet zufällige Renderparameter (Labels werden später gesetzt)."""
     motion_name = "none"
-    motion_id = MOTION_TO_ID[motion_name]
     rot_name = "none"
-    rot_id = ROT_TO_ID[rot_name]
 
-    shape_id = SHAPE_TO_ID[shape] # 0 für rect, 1 für tri
-
-
-    # Objektgröße
     radius = int(rng.integers(low=max(8, min(H, W)//16), high=max(14, min(H, W)//8)))
     thickness = -1
 
-    # Startwinkel
     angle0 = float(rng.uniform(0, 360))
 
-    # Störungen (klein)
+    # Base: leicht variabler Hintergrund + sehr kleines Rauschen
     bg_level = int(rng.integers(235, 256))
-    noise_std = float(rng.uniform(0.0, 6.0))
+    noise_std = float(rng.uniform(0.0, 2.0))
     blur_ksize = int(rng.choice([0, 0, 0, 3]))
 
-    # Bewegung/Rotation werden durch Labels gesetzt
     return ClipParams(
         motion_name=motion_name,
-        motion_id=motion_id,
+        motion_id=MOTION_TO_ID[motion_name],
         rot_name=rot_name,
-        rot_id=rot_id,
+        rot_id=ROT_TO_ID[rot_name],
+        shape_id=SHAPE_TO_ID[shape],
         shape=shape,
-        shape_id=shape_id,
         H=H, W=W, T=T,
         radius=radius,
         thickness=thickness,
-        speed=0.0,  # wird später durch set_motion überschrieben
+        speed=0.0,
         x0=0, y0=0,
         vx=0.0, vy=0.0,
         angle0=angle0,
@@ -218,20 +209,36 @@ def sample_params(H: int,
     )
 
 
-def set_motion(p: ClipParams, motion_name: str, rng: np.random.Generator) -> None:
+def set_motion(
+    p: ClipParams,
+    motion_name: str,
+    rng: np.random.Generator,
+    motion_mode: str,
+    fixed_speed: float,
+    speed_levels: List[float],
+) -> None:
     """
     Setzt Geschwindigkeit und Startposition so, dass die Form im Bild bleibt.
+
+    motion_mode:
+      - fixed    -> immer fixed_speed
+      - variable -> zufällig aus speed_levels
     """
     p.motion_name = motion_name
     p.motion_id = MOTION_TO_ID[motion_name]
 
     if motion_name == "none":
-        vx, vy = 0.0, 0.0
-        dx, dy = 0.0, 0.0
         p.speed = 0.0
+        p.vx, p.vy = 0.0, 0.0
+        dx, dy = 0.0, 0.0
     else:
-        # speed = float(rng.choice(SPEED_LEVELS))  # zufällige Geschwindigkeit aus den definierten Levels
-        speed = FIXED_SPEED  # feste Geschwindigkeit für klar erkennbare Bewegung
+        if motion_mode == "fixed":
+            speed = float(fixed_speed)
+        elif motion_mode == "variable":
+            speed = float(rng.choice(speed_levels))
+        else:
+            raise ValueError(f"Unknown motion_mode: {motion_mode}")
+
         p.speed = speed
 
         vx, vy = 0.0, 0.0
@@ -244,20 +251,20 @@ def set_motion(p: ClipParams, motion_name: str, rng: np.random.Generator) -> Non
         elif motion_name == "down":
             vy = speed
 
+        p.vx, p.vy = vx, vy
         dx = abs(vx) * (p.T - 1)
         dy = abs(vy) * (p.T - 1)
 
-    p.vx, p.vy = vx, vy
-
-    # Startposition so wählen, dass der Pfad innerhalb des Bildes liegt
+    # Startposition so wählen, dass der Pfad innerhalb des Bildes bleibt
     margin = p.radius + 3
+    vx, vy = p.vx, p.vy
 
     x_min = margin + int(dx if vx < 0 else 0)
     x_max = (p.W - margin) - int(dx if vx > 0 else 0)
     y_min = margin + int(dy if vy < 0 else 0)
     y_max = (p.H - margin) - int(dy if vy > 0 else 0)
 
-    # robuste Fallbacks, falls Parameter selten zu eng werden
+    # robuste Fallbacks
     x_min = min(max(x_min, margin), p.W - margin)
     x_max = max(min(x_max, p.W - margin), margin)
     y_min = min(max(y_min, margin), p.H - margin)
@@ -272,12 +279,20 @@ def set_motion(p: ClipParams, motion_name: str, rng: np.random.Generator) -> Non
     p.y0 = int(rng.integers(y_min, y_max + 1))
 
 
-def set_rotation(p: ClipParams, rot_name: str, rng: np.random.Generator) -> None:
+def set_rotation(
+    p: ClipParams,
+    rot_name: str,
+    rng: np.random.Generator,
+    rot_mode: str,
+    fixed_omega: float,
+    omega_levels: List[float],
+) -> None:
     """
     Setzt Rotationsgeschwindigkeit in Grad/Frame.
-    ccw: positive Winkelgeschwindigkeit
-    cw:  negative Winkelgeschwindigkeit
-    none: 0
+
+    rot_mode:
+      - fixed    -> immer fixed_omega
+      - variable -> zufällig aus omega_levels
     """
     p.rot_name = rot_name
     p.rot_id = ROT_TO_ID[rot_name]
@@ -285,16 +300,18 @@ def set_rotation(p: ClipParams, rot_name: str, rng: np.random.Generator) -> None
     if rot_name == "none":
         p.omega_deg_per_frame = 0.0
         p.omega_mag = 0.0
+        return
+
+    if rot_mode == "fixed":
+        mag = float(fixed_omega)
+    elif rot_mode == "variable":
+        mag = float(rng.choice(omega_levels))
     else:
-        # Magnitude bewusst klein bis moderat halten, damit pro Clip eine erkennbare Änderung entsteht
+        raise ValueError(f"Unknown rot_mode: {rot_mode}")
 
-        mag = FIXED_OMEGA  # deg/frame
-        # mag = float(rng.choice(OMEGA_LEVELS))  # zufällige Magnitude aus den definierten Levels
+    p.omega_mag = mag
+    p.omega_deg_per_frame = mag if rot_name == "ccw" else -mag
 
-        p.omega_mag = mag
-        p.omega_deg_per_frame = mag if rot_name == "ccw" else -mag
-
-        
 
 def save_preview_mp4(frames: np.ndarray, out_path: str, fps: int = 12) -> None:
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -306,12 +323,12 @@ def save_preview_mp4(frames: np.ndarray, out_path: str, fps: int = 12) -> None:
     vw.release()
 
 
-def make_balanced_triples(n: int, rng: np.random.Generator) -> List[Tuple[str, str, str]]:
+def make_balanced_triples(n: int, rng: np.random.Generator, shapes: List[str]) -> List[Tuple[str, str, str]]:
     """
-    Erzeugt eine Liste von (motion, rot, shape) Triplen.
-    Ziel: gleichmäßige Abdeckung über die Kartesischen Kombinationen.
+    Erzeugt eine Liste von (motion, rot, shape) Tripeln.
+    Ziel: gleichmäßige Abdeckung über alle Kombinationen.
     """
-    combos = [(m, r, s) for m in MOTION_LABELS for r in ROT_LABELS for s in SHAPE_LABELS]
+    combos = [(m, r, s) for m in MOTION_LABELS for r in ROT_LABELS for s in shapes]
     reps = (n + len(combos) - 1) // len(combos)
     triples = (combos * reps)[:n]
     rng.shuffle(triples)
@@ -320,25 +337,76 @@ def make_balanced_triples(n: int, rng: np.random.Generator) -> List[Tuple[str, s
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", type=str, default="synth_multilabel", help="Output-Verzeichnis")
+
+    ap.add_argument("--out", type=str, required=True, help="Output-Verzeichnis (Dataset-Root)")
+    ap.add_argument("--on_exists", type=str, default="error", choices=["error", "overwrite"],
+                    help="Wenn --out existiert: error (abbrechen) oder overwrite (löschen & neu schreiben)")
+
     ap.add_argument("--train", type=int, default=3000, help="Anzahl Train-Clips")
     ap.add_argument("--val", type=int, default=600, help="Anzahl Val-Clips")
     ap.add_argument("--test", type=int, default=600, help="Anzahl Test-Clips")
+
     ap.add_argument("--H", type=int, default=112)
     ap.add_argument("--W", type=int, default=112)
     ap.add_argument("--T", type=int, default=16, help="Frames pro Clip (entspricht n_segment)")
     ap.add_argument("--seed", type=int, default=123)
+
     ap.add_argument("--shapes", type=str, default="rect,tri", help="Komma-separiert: rect,tri")
     ap.add_argument("--preview", type=int, default=12, help="Anzahl Preview-mp4 pro Split")
+
+    # Reproduzierbare Steuerung (statt Auskommentieren)
+    ap.add_argument("--motion_mode", type=str, default="fixed", choices=["fixed", "variable"])
+    ap.add_argument("--rot_mode", type=str, default="fixed", choices=["fixed", "variable"])
+
+    ap.add_argument("--fixed_speed", type=float, default=DEFAULT_FIXED_SPEED)
+    ap.add_argument("--fixed_omega", type=float, default=DEFAULT_FIXED_OMEGA)
+
+    ap.add_argument("--speed_levels", type=str, default=",".join(str(x) for x in DEFAULT_SPEED_LEVELS))
+    ap.add_argument("--omega_levels", type=str, default=",".join(str(x) for x in DEFAULT_OMEGA_LEVELS))
+
     args = ap.parse_args()
+
+    out_root = args.out
+
+    # Sicherheitsnetz: Datasets nicht still überschreiben
+    if os.path.exists(out_root) and os.listdir(out_root):
+        if args.on_exists == "error":
+            raise FileExistsError(
+                f"Dataset-Ordner existiert bereits und ist nicht leer: {out_root}\n"
+                f"Wenn du ihn wirklich neu erzeugen willst: --on_exists overwrite"
+            )
+        elif args.on_exists == "overwrite":
+            print(f"[INFO] Lösche bestehenden Dataset-Ordner und erzeuge neu: {out_root}")
+            shutil.rmtree(out_root)
+
+    os.makedirs(out_root, exist_ok=True)
 
     shapes = [s.strip() for s in args.shapes.split(",") if s.strip()]
     for s in shapes:
-        if s not in ["rect", "tri"]:
+        if s not in SHAPE_LABELS:
             raise ValueError(f"Invalid shape: {s}")
 
-    out_root = args.out
-    os.makedirs(out_root, exist_ok=True)
+    speed_levels = parse_float_list(args.speed_levels)
+    omega_levels = parse_float_list(args.omega_levels)
+
+    # Config abspeichern (für BA-Reproduzierbarkeit)
+    cfg = {
+        "H": args.H,
+        "W": args.W,
+        "T": args.T,
+        "seed": args.seed,
+        "shapes": shapes,
+        "motion_mode": args.motion_mode,
+        "rot_mode": args.rot_mode,
+        "fixed_speed": float(args.fixed_speed),
+        "fixed_omega": float(args.fixed_omega),
+        "speed_levels": speed_levels,
+        "omega_levels": omega_levels,
+        "counts": {"train": args.train, "val": args.val, "test": args.test},
+        "note": "Base difficulty: hoher Kontrast, leichte Störungen (noise/blur/bg_level).",
+    }
+    with open(os.path.join(out_root, "dataset_config.json"), "w") as f:
+        json.dump(cfg, f, indent=2)
 
     splits = [("train", args.train, args.seed),
               ("val", args.val, args.seed + 1),
@@ -353,8 +421,7 @@ def main():
 
         rng = np.random.default_rng(split_seed)
 
-        # Motion/Rotation Kombinationen balanciert
-        triples = make_balanced_triples(n, rng)
+        triples = make_balanced_triples(n, rng, shapes)
 
         rows: List[Dict[str, Any]] = []
         pbar = tqdm(range(n), desc=f"Generating {split_name}")
@@ -362,15 +429,15 @@ def main():
             motion_name, rot_name, shape_name = triples[i]
 
             p = sample_params(args.H, args.W, args.T, rng, shape_name)
-            set_motion(p, motion_name, rng)
-            set_rotation(p, rot_name, rng)
+            set_motion(p, motion_name, rng, args.motion_mode, args.fixed_speed, speed_levels)
+            set_rotation(p, rot_name, rng, args.rot_mode, args.fixed_omega, omega_levels)
 
             frames = render_clip(p, rng)
 
             clip_path = os.path.join(clip_dir, f"{i:06d}.npz")
             np.savez_compressed(
                 clip_path,
-                frames=frames,            # [T,H,W,3] uint8
+                frames=frames,
                 motion=np.int64(p.motion_id),
                 rot=np.int64(p.rot_id),
                 shape=np.int64(p.shape_id),
@@ -394,12 +461,13 @@ def main():
 
     pd.DataFrame([{"rot_id": i, "rot_name": n} for n, i in ROT_TO_ID.items()]) \
         .sort_values("rot_id").to_csv(os.path.join(out_root, "labels_rot.csv"), index=False)
-    
+
     pd.DataFrame([{"shape_id": i, "shape_name": n} for n, i in SHAPE_TO_ID.items()]) \
         .sort_values("shape_id").to_csv(os.path.join(out_root, "labels_shape.csv"), index=False)
 
     print(f"\nDone. Dataset written to: {out_root}")
     print("Splits: train/val/test, each contains clips/*.npz, meta.csv, preview/*.mp4")
+    print(f"Config: {os.path.join(out_root, 'dataset_config.json')}")
 
 
 if __name__ == "__main__":

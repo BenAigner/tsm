@@ -1,0 +1,21 @@
+{
+  "seed": 789,
+  "use_tsm": false,
+  "n_segment": 16,
+  "fold_div": 8,
+  "epochs_max": 100,
+  "epochs_ran": 100,
+  "early_stop": true,
+  "patience": 15,
+  "min_delta": 0.001,
+  "best_val_exact": 0.7316666666666667,
+  "best_epoch": 98,
+  "batch_size": 16,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "test_loss": 1.455508171717326,
+  "test_acc_motion": 0.9233333333333333,
+  "test_acc_rot": 0.7533333333333333,
+  "test_acc_shape": 0.9983333333333333,
+  "test_acc_exact": 0.71
+}
