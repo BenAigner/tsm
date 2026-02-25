@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+
 class TemporalShift(nn.Module):
     """
     Temporal Shift Module (TSM)
@@ -12,34 +13,40 @@ class TemporalShift(nn.Module):
       - Kanäle [fold:2*fold]   -> Shift aus Zukunft:      y[t] = x[t+1]
       - Rest                   -> bleibt gleich
 
-    Performance:
-      - Kein in-place auf x (autograd-sicher).
-      - Kein x.clone() (vermeidet volle Kopie). Wir schreiben gezielt in ein neues Tensor.
+    Optimierung (ohne Funktionsänderung):
+      - Vermeidet new_zeros über den ganzen Tensor (teure Full-Memory-Init).
+      - Nutzt new_empty + setzt nur die Randframes der geshifteten Kanäle auf 0.
+       
     """
     def __init__(self, n_segment: int, fold_div: int = 8):
         super().__init__()
-        self.n_segment = n_segment
-        self.fold_div = fold_div
+        self.n_segment = int(n_segment)
+        self.fold_div = int(fold_div)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        assert x.dim() == 5, "TSM erwartet [N,T,C,H,W]"
+        if x.dim() != 5:
+            raise ValueError(f"TSM erwartet [N,T,C,H,W], bekam shape={tuple(x.shape)}")
+
         N, T, C, H, W = x.shape
-        assert T == self.n_segment, f"T={T} muss n_segment={self.n_segment} sein"
+        if T != self.n_segment:
+            raise ValueError(f"T={T} muss n_segment={self.n_segment} sein")
 
         fold = C // self.fold_div
         if fold == 0:
             return x
 
-        y = x.new_zeros((N, T, C, H, W))
+        # Statt full zero-init: schneller (spart Memory-Bandwidth)
+        y = x.new_empty((N, T, C, H, W))
 
         # Rest: unverändert kopieren
-        y[:, :, 2*fold:, :, :] = x[:, :, 2*fold:, :, :]
+        y[:, :, 2 * fold :, :, :] = x[:, :, 2 * fold :, :, :]
 
-        # Past shift: y[t] bekommt x[t-1]
+        # Past shift: y[t] = x[t-1] für die ersten fold Kanäle
         y[:, 1:, :fold, :, :] = x[:, :-1, :fold, :, :]
+        y[:, 0, :fold, :, :].zero_()  # Randframe entspricht new_zeros Verhalten
 
-        # Future shift: y[t] bekommt x[t+1]
-        y[:, :-1, fold:2*fold, :, :] = x[:, 1:, fold:2*fold, :, :]
+        # Future shift: y[t] = x[t+1] für die nächsten fold Kanäle
+        y[:, :-1, fold : 2 * fold, :, :] = x[:, 1:, fold : 2 * fold, :, :]
+        y[:, -1, fold : 2 * fold, :, :].zero_()  # Randframe entspricht new_zeros Verhalten
 
         return y
-

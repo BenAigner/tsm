@@ -1,0 +1,5 @@
+case,test_acc_exact_noTSM,test_acc_exact_TSM,test_mae_speed_denorm_noTSM,test_mae_speed_denorm_TSM,test_mae_omega_denorm_noTSM,test_mae_omega_denorm_TSM,test_rmse_speed_denorm_noTSM,test_rmse_speed_denorm_TSM,test_rmse_omega_denorm_noTSM,test_rmse_omega_denorm_TSM
+FIX_MOT_FIX_ROT,0.341 ± 0.129,1.000 ± 0.000,0.239 ± 0.090,0.053 ± 0.023,0.923 ± 1.409,0.091 ± 0.038,0.355 ± 0.138,0.117 ± 0.069,1.089 ± 1.539,0.169 ± 0.055
+FIX_MOT_VAR_ROT,0.364 ± 0.016,0.973 ± 0.006,0.291 ± 0.024,0.052 ± 0.017,1.161 ± 0.092,0.650 ± 0.034,0.408 ± 0.038,0.105 ± 0.008,1.672 ± 0.142,1.039 ± 0.070
+VAR_MOT_FIX_ROT,0.221 ± 0.011,0.964 ± 0.010,0.772 ± 0.034,0.615 ± 0.148,2.610 ± 0.013,0.461 ± 0.137,0.987 ± 0.041,0.806 ± 0.166,2.869 ± 0.018,0.910 ± 0.173
+VAR_MOT_VAR_ROT,0.278 ± 0.091,0.793 ± 0.067,0.794 ± 0.052,0.660 ± 0.139,2.418 ± 1.049,1.424 ± 0.469,1.069 ± 0.072,0.897 ± 0.194,2.838 ± 0.984,1.918 ± 0.596

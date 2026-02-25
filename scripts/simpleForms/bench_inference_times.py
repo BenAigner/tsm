@@ -7,8 +7,6 @@ from typing import Dict, Any, Optional, List, Tuple
 import numpy as np
 import pandas as pd
 import torch
-
-# Passe Imports an, falls deine Pfade anders sind:
 from models.simpleForms.tsm_cnn import TSM_CNN
 
 
@@ -165,7 +163,7 @@ def collect_run_dirs(runs_root: Path) -> List[Path]:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--runs_root", type=str, default="runs_E100_ES", help="Ordner mit with_TSM_res/without_TSM_res")
+    ap.add_argument("--runs_root", type=str, default="runs/ResShift/100epochs", help="Ordner mit with_TSM_res/without_TSM_res")
     ap.add_argument("--out", type=str, default="", help="Output-Ordner (Default: <runs_root>/inference_bench)")
     ap.add_argument("--iters", type=int, default=200, help="Mess-Iterationen (mehr = stabiler)")
     ap.add_argument("--warmup", type=int, default=50, help="Warmup-Iterationen")
