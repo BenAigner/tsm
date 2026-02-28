@@ -8,12 +8,12 @@ from models.simpleForms.tsm import TemporalShift
 class BasicBlockTSM(nn.Module):
     """
     ResNet-ähnlicher Block, bei dem TSM im Residual-Branch liegt.
-
+    
     identity ---------------> (+) -> ReLU
         |                     ^
         v                     |
       (branch) ---------------
-      TSM -> Conv -> BN -> ReLU -> Conv -> BN
+      TSM -> Conv -> GN -> ReLU -> Conv -> GN
     """
     def __init__(self, in_ch, out_ch, stride, n_segment, fold_div, use_tsm=True):
         super().__init__()
@@ -21,15 +21,16 @@ class BasicBlockTSM(nn.Module):
 
         self.tsm = TemporalShift(n_segment=n_segment, fold_div=fold_div) if use_tsm else nn.Identity()
 
+        # GROUPNORM 
         self.conv1 = nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.bn1   = nn.BatchNorm2d(out_ch)
+        self.gn1   = nn.GroupNorm(16, out_ch)  # GEÄNDERT: GroupNorm
         self.conv2 = nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn2   = nn.BatchNorm2d(out_ch)
+        self.gn2   = nn.GroupNorm(16, out_ch)  # GEÄNDERT: GroupNorm
 
         if stride != 1 or in_ch != out_ch:
             self.down = nn.Sequential(
                 nn.Conv2d(in_ch, out_ch, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(out_ch)
+                nn.GroupNorm(32, out_ch)  # GEÄNDERT: GroupNorm
             )
         else:
             self.down = nn.Identity()
@@ -51,8 +52,8 @@ class BasicBlockTSM(nn.Module):
         identity = self.down(x)
 
         out = self._apply_tsm(x)  # Shift im Branch
-        out = F.relu(self.bn1(self.conv1(out)))
-        out = self.bn2(self.conv2(out))
+        out = F.relu(self.gn1(self.conv1(out)))  # gn1 statt bn1
+        out = self.gn2(self.conv2(out))          # gn2 statt bn2
 
         out = F.relu(out + identity)
         return out

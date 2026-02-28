@@ -75,12 +75,6 @@ def make_run_dir(base_save_dir: str, case: str, use_tsm: bool, seed: int) -> str
     return out_dir
 
 
-def freeze_batchnorm(model: nn.Module) -> None:
-    # BatchNorm in eval setzen (running stats nicht updaten, keine batch-stats)
-    for m in model.modules():
-        if isinstance(m, nn.BatchNorm2d):
-            m.eval()
-
 
 def _make_loader(ds, batch_size: int, shuffle: bool, num_workers: int, device: torch.device) -> DataLoader:
     # DataLoader kwargs zentral bündeln
@@ -438,11 +432,9 @@ def train_one_epoch(
     lambda_omega: float,
     use_amp: bool,
     scaler: GradScaler,
-    freeze_bn: bool,
 ) -> Metrics:
+    
     model.train()
-    if freeze_bn:
-        freeze_batchnorm(model)
 
     total_loss = 0.0
     total = 0
@@ -692,8 +684,6 @@ def main() -> None:
     # AMP
     ap.add_argument("--amp", action="store_true", help="Automatic Mixed Precision")
 
-    # BatchNorm Freeze
-    ap.add_argument("--freeze_bn", action="store_true", help="BatchNorm2d im Training einfrieren")
 
     # Optional inference benchmark (für spätere Tradeoff-Plots)
     ap.add_argument("--bench_infer", action="store_true", help="Misst Inferenzzeit (ms/forward) auf 1 Batch")
@@ -765,7 +755,6 @@ def main() -> None:
     print(f"Train/Val/Test: {len(ds_train)} / {len(ds_val)} / {len(ds_test)}")
     print(f"Normalize regression: {args.normalize_regression}")
     print(f"AMP: {args.amp}")
-    print(f"freeze_bn: {args.freeze_bn}")
     print(f"Output: {out_dir}\n")
 
     for epoch in range(1, args.epochs + 1):
@@ -779,7 +768,6 @@ def main() -> None:
             lambda_omega=args.lambda_omega,
             use_amp=bool(args.amp),
             scaler=scaler,
-            freeze_bn=bool(args.freeze_bn),
         )
 
         val_m = evaluate(
@@ -839,7 +827,6 @@ def main() -> None:
                     "args": vars(args),
                     "best_score": float(best_score),
                     "best_epoch": int(best_epoch),
-                    "freeze_bn": bool(args.freeze_bn),
                     "speed_max": float(getattr(ds_train, "speed_max", np.nan)) if hasattr(ds_train, "speed_max") else float("nan"),
                     "omega_max": float(getattr(ds_train, "omega_max", np.nan)) if hasattr(ds_train, "omega_max") else float("nan"),
                 },
@@ -959,7 +946,6 @@ def main() -> None:
         "patience": int(args.patience),
         "min_delta": float(args.min_delta),
         "amp": bool(args.amp),
-        "freeze_bn": bool(args.freeze_bn),
 
         "test_loss": float(test_m.loss),
         "test_acc_motion": float(test_m.acc_motion),

@@ -89,8 +89,6 @@ def main():
     # AMP
     ap.add_argument("--amp", action="store_true")
 
-    # BatchNorm freeze passt durch
-    ap.add_argument("--freeze_bn", action="store_true")
 
     # Optional inference benchmark passt durch
     ap.add_argument("--bench_infer", action="store_true")
@@ -154,8 +152,6 @@ def main():
         if args.amp:
             cmd.append("--amp")
 
-        if args.freeze_bn:
-            cmd.append("--freeze_bn")
 
         if args.bench_infer:
             cmd += ["--bench_infer", "--bench_iters", str(args.bench_iters), "--bench_warmup", str(args.bench_warmup)]

@@ -8,31 +8,32 @@ from models.simpleForms.tsm import TemporalShift
 class BasicBlockTSM(nn.Module):
     """
     ResNet-ähnlicher Block, bei dem TSM im Residual-Branch liegt.
-
+    
     identity ---------------> (+) -> ReLU
         |                     ^
         v                     |
       (branch) ---------------
-      TSM -> Conv -> BN -> ReLU -> Conv -> BN
-
-    Das entspricht dem "residual shift"-Gedanken aus dem TSM Paper:
-    Der Shift "stört" nicht den Identity-Pfad; räumliche Info bleibt stabil.
+      TSM -> Conv -> GN -> ReLU -> Conv -> GN
+    
+    Das entspricht dem residual shift-Gedanken aus dem TSM Paper.
+    Der Shift stört nicht den Identity-Pfad → räumliche Info bleibt stabil.
     """
     def __init__(self, in_ch, out_ch, stride, n_segment, fold_div, use_tsm=True):
         super().__init__()
         self.n_segment = n_segment
-
+        
         self.tsm = TemporalShift(n_segment=n_segment, fold_div=fold_div) if use_tsm else nn.Identity()
 
+        # GROUPNORM statt BATCHNORM
         self.conv1 = nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.bn1   = nn.BatchNorm2d(out_ch)
+        self.gn1   = nn.GroupNorm(32, out_ch)  # GEÄNDERT
         self.conv2 = nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn2   = nn.BatchNorm2d(out_ch)
-
+        self.gn2   = nn.GroupNorm(32, out_ch)  # GEÄNDERT
+        
         if stride != 1 or in_ch != out_ch:
             self.down = nn.Sequential(
                 nn.Conv2d(in_ch, out_ch, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(out_ch)
+                nn.GroupNorm(32, out_ch)  # GEÄNDERT
             )
         else:
             self.down = nn.Identity()
@@ -52,11 +53,11 @@ class BasicBlockTSM(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         identity = self.down(x)
-
+        
         out = self._apply_tsm(x)  # Shift im Branch
-        out = F.relu(self.bn1(self.conv1(out)))
-        out = self.bn2(self.conv2(out))
-
+        out = F.relu(self.gn1(self.conv1(out)))  # gn1 statt bn1
+        out = self.gn2(self.conv2(out))          # gn2 statt bn2
+        
         out = F.relu(out + identity)
         return out
 
@@ -65,7 +66,7 @@ class TSM_CNN(nn.Module):
     """
     Sauberes Backbone mit echten Residual-Blöcken + drei Köpfen:
     motion (5), rot (3), shape (2)
-
+    
     Input:  x [N, T, 3, H, W]
     Output: logits_motion [N,5], logits_rot [N,3], logits_shape [N,2]
     """
@@ -81,10 +82,10 @@ class TSM_CNN(nn.Module):
     ):
         super().__init__()
         self.n_segment = n_segment
-
+        
         self.layer1 = BasicBlockTSM(3,   32, stride=1, n_segment=n_segment, fold_div=fold_div, use_tsm=use_tsm)
         self.layer2 = BasicBlockTSM(32,  64, stride=2, n_segment=n_segment, fold_div=fold_div, use_tsm=use_tsm)
-        self.layer3 = BasicBlockTSM(64, 128, stride=2, n_segment=n_segment, fold_div=fold_div, use_tsm=False)       
+        self.layer3 = BasicBlockTSM(64, 128, stride=2, n_segment=n_segment, fold_div=fold_div, use_tsm=False)
         self.layer4 = BasicBlockTSM(128,128, stride=1, n_segment=n_segment, fold_div=fold_div, use_tsm=False)
 
         self.adapt = nn.AdaptiveAvgPool2d((4, 4))
@@ -101,7 +102,7 @@ class TSM_CNN(nn.Module):
         N, T, C, H, W = x.shape
         assert T == self.n_segment, "Clip-Länge T muss n_segment entsprechen"
 
-        # Frameweise 2D Verarbeitung
+        # Frameweise 2D Verarbeitung: [N*T, C, H, W]
         x = x.reshape(N * T, C, H, W)
 
         x = self.layer1(x)
@@ -109,10 +110,12 @@ class TSM_CNN(nn.Module):
         x = self.layer3(x)
         x = self.layer4(x)
 
+        # Spatial pooling -> [N*T, feat_dim]
         x = self.adapt(x)
         x = x.reshape(N, T, -1)
-        x = x.mean(dim=1)
+        x = x.mean(dim=1)  # temporal pooling -> [N, feat_dim]
 
+        # Shared MLP -> [N, 256]
         x = F.relu(self.fc_shared(x))
         x = self.drop(x)
 
